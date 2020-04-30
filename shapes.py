@@ -7,7 +7,7 @@ import neuroglancer
 
 from numpy import genfromtxt
 my_data = genfromtxt('data.csv', delimiter=',')
-
+my_data = my_data.astype(int)
 numofData = my_data.size/3
 
 ap = argparse.ArgumentParser()
@@ -25,8 +25,35 @@ if args.static_content_url:
     neuroglancer.set_static_content_source(url=args.static_content_url)
 
 im = tifffile.imread("testFile3d.tif")
-a = np.array(im)
-a = np.moveaxis(a, 0, -1)
+np_image = np.array(im)
+np_image = np.moveaxis(np_image, 0, -1)
+(xdim, ydim, zdim) = np_image.shape
+np_image = np.resize(np_image, (xdim, ydim, zdim, 3))
+
+#creating the target array
+target = np.zeros((100, 100, 16, 3), dtype=np.uint8)
+ix, iy, iz = np.meshgrid(* [np.linspace(0, 1, n) for n in target.shape[1:]], indexing='ij')
+target[0, :, :, :] = np.abs(np.sin(4 * (ix + iy))) * 255
+target[1, :, :, :] = np.abs(np.sin(4 * (iy + iz))) * 255
+target[2, :, :, :] = np.abs(np.sin(4 * (ix + iz))) * 255
+
+margin = 50
+margin2 = 5
+
+
+#updating array from csv file
+i = 0
+while (i < numofData):
+    xcord = my_data[i][0]
+    ycord = my_data[i][1]
+    zcord = my_data[i][2]
+    for x in range (int(xcord - margin), int(xcord + margin)):
+        for y in range (int(ycord - margin), int(ycord + margin)):
+            for z in range (int(zcord - margin2), int(zcord + margin2)):
+                np_image[x][y][z][0] = target[x - (xcord - margin)][y - (ycord - margin)][z - (zcord - margin2)][0]
+                np_image[x][y][z][1] = target[x - (xcord - margin)][y - (ycord - margin)][z - (zcord - margin2)][1]
+                np_image[x][y][z][2] = target[x - (xcord - margin2)][y - (ycord - margin)][z - (zcord - margin2)][2]
+    i +=1
 
 viewer = neuroglancer.Viewer()
 dimensions = neuroglancer.CoordinateSpace(
@@ -39,12 +66,12 @@ with viewer.txn() as s:
     s.layers.append(
         name='a',
         layer=neuroglancer.LocalVolume(
-            data=a,
+            data=np_image,
             dimensions=neuroglancer.CoordinateSpace(
-                names=['x', 'y', 'z'],
-                units=['nm', 'nm', 'nm'],
-                scales=[10, 10, 10]),
-            voxel_offset=(20, 30, 15),
+                names=['c^', 'x', 'y', 'z'],
+                units=['', 'nm','nm','nm'],
+                scales=[1, 10, 10, 10]),
+            voxel_offset=(0, 20, 30, 15),
         ),
         shader="""
 void main() {
@@ -52,7 +79,7 @@ void main() {
                toNormalized(getDataValue(1)),
                toNormalized(getDataValue(2))));
 }
-""")
+""")      
 
 
 def acquire_mouse_action(s):
@@ -85,5 +112,8 @@ with viewer.config_state.txn() as s:
 
 
 print(viewer)
+
+
+
 
 
